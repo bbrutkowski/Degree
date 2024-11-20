@@ -1,0 +1,100 @@
+﻿@using Degree.Models.DTO;
+@model IEnumerable<ProductDto>
+
+<a href="@Url.Action("Index", "ShoppingCart")" class="cart-icon">
+    <i class="fa fa-shopping-cart"></i>
+    <span class="cart-item-count">@ViewBag.CartItemCount</span>
+</a>
+
+<div class="product-list">
+    @foreach (var product in Model)
+    {
+        <div class="product-item">
+            <img src="@product.Image" alt="@product.Title" />
+            <h3>@product.Title</h3>
+            <p>@product.Category</p>
+            <p class="description">@product.Description</p>
+            <div class="price">@product.Price.ToString("C")</div>
+            <button class="add-to-cart btn btn-primary"
+                    data-product-id="@product.Id"
+                    data-product-title="@product.Title"
+                    data-product-price="@product.Price"
+                    data-product-category="@product.Category">
+                Add to Cart
+            </button>
+        </div>
+    }
+</div>
+
+<div class="pagination">
+    @if (ViewBag.CurrentPage > 1)
+    {
+        <a asp-action="Index" asp-route-page="@(ViewBag.CurrentPage - 1)" class="prev-page">Previous</a>
+    }
+
+    @for (int i = 1; i <= ViewBag.TotalPages; i++)
+    {
+        <a asp-action="Index" asp-route-page="@i"
+           class="@(i == ViewBag.CurrentPage ? "active" : "")">
+            @i
+        </a>
+    }
+
+    @if (ViewBag.CurrentPage < ViewBag.TotalPages)
+    {
+        <a asp-action="Index" asp-route-page="@(ViewBag.CurrentPage + 1)" class="next-page">Next</a>
+    }
+</div>
+
+<script>
+    document.querySelectorAll('.add-to-cart').forEach(button => {
+        button.addEventListener('click', async function (event) {
+            event.preventDefault();
+
+            const originalText = this.textContent; 
+            this.textContent = 'Added'; 
+            this.disabled = true;
+
+            const productId = this.getAttribute('data-product-id');
+            const title = this.getAttribute('data-product-title');
+            const price = this.getAttribute('data-product-price');
+            const category = this.getAttribute('data-product-category');
+
+            const product = {
+                productId: productId,
+                title: title,
+                price: parseFloat(price),
+                category: category,
+            };
+
+            try {
+                const response = await fetch('/ShoppingCart/Add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(product)
+                });
+
+                if (response.ok) {
+                    const cartItemCount = await response.json();
+                    updateCartIcon(cartItemCount);
+                } else {
+                    console.error('Failed to add product to cart. Code:', response.status);
+                }
+            } catch (error) {
+                console.error('Error while adding to cart:', error);
+            }
+
+            setTimeout(() => {
+                this.textContent = originalText;
+                this.disabled = false; 
+            }, 1000);
+
+            function updateCartIcon(count) {
+                const cartCountElement = document.querySelector('.cart-item-count');
+                if (cartCountElement) cartCountElement.textContent = count;
+            }
+        });
+    });
+</script>
