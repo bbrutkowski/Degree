@@ -2,7 +2,6 @@
 using Degree.Models;
 using Degree.Models.DTO;
 using Degree.Services.Interfaces;
-using Newtonsoft.Json;
 
 namespace Degree.Services
 {
@@ -10,79 +9,68 @@ namespace Degree.Services
     {
         private readonly IHttpService _httpService;
         private readonly IShoppingCartService _shoppingCartService;
+        private readonly IPaginationService _paginationService; 
         private readonly ILogger<ProductService> _logger;
-
-        private const string _productsUrl = "https://fakestoreapi.com/products";
-        private const string _deserializationError = "Error while products deserialization";
 
         public ProductService(IHttpService httpService,
                               IShoppingCartService shoppingCartService,
+                              IPaginationService paginationService,
                               ILogger<ProductService> logger)
         {
             _httpService = httpService;
             _shoppingCartService = shoppingCartService;
+            _paginationService = paginationService;
             _logger = logger;
         }
 
         public async Task<Result<IReadOnlyCollection<ProductDto>>> GetProductsAsync(CancellationToken token)
         {
-            _logger.LogInformation("Downloading products");
+            var fetchProductsResult = await _httpService.GetProductsAsync(token);
+            if (fetchProductsResult.IsFailure) return Result.Failure<IReadOnlyCollection<ProductDto>>(fetchProductsResult.Error);
 
-            var createRequestResult = _httpService.CreateGetRequest(_productsUrl);
-            if (createRequestResult.IsFailure) return Result.Failure<IReadOnlyCollection<ProductDto>>(createRequestResult.Error);
+            _logger.LogInformation("Fetching completed successfully");
 
-            var sendRequestResult = await _httpService.SendGetRequestAsync(createRequestResult.Value, token);
-            if (sendRequestResult.IsFailure) return Result.Failure<IReadOnlyCollection<ProductDto>>(sendRequestResult.Error);
-
-            var convertResult = ConvertResponseToProducts(sendRequestResult.Value);
-            if (convertResult.IsFailure) return Result.Failure<IReadOnlyCollection<ProductDto>>(convertResult.Error);
-
-            _logger.LogInformation("Download completed successfully");
-
-            return Result.Success(convertResult.Value);
+            return Result.Success(fetchProductsResult.Value);
         }
 
-        private Result<IReadOnlyCollection<ProductDto>> ConvertResponseToProducts(string response)
+        public async Task<Result<List<string>>> GetCategoriesAsync(CancellationToken token)
         {
-            try
-            {
-                var products = JsonConvert.DeserializeObject<IReadOnlyCollection<ProductDto>>(response);
-                if (products is null) return Result.Failure<IReadOnlyCollection<ProductDto>>(_deserializationError);
+            var categoriesResult = await _httpService.GetCategoriesAsync(token);
+            if (categoriesResult.IsFailure) return Result.Failure<List<string>> (categoriesResult.Error);
 
-                _logger.LogInformation("Deserialization complete");
+            _logger.LogInformation("Fetching categories completed");
 
-                return Result.Success(products);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"{_deserializationError}: {ex.Message}");
-                return Result.Failure<IReadOnlyCollection<ProductDto>>(ex.Message);
-            }
+            return Result.Success(categoriesResult.Value);
         }
 
-        public Result<PageItemsDto> CalculatePageItems(IReadOnlyCollection<ProductDto> products, int page)
+        public async Task<Result<IReadOnlyCollection<ProductDto>>> GetProductsByCategoryAsync(string category, CancellationToken token)
+        {
+            var categoriesResult = await _httpService.GetProductsByCategoryAsync(category, token);
+            if (categoriesResult.IsFailure) return Result.Failure<IReadOnlyCollection<ProductDto>>(categoriesResult.Error);
+
+            _logger.LogInformation("Fetching products by category completed");
+
+            return Result.Success(categoriesResult.Value);
+        }
+
+        public Result<PageItemsDto<T>> CalculatePageItems<T>(IReadOnlyCollection<T> source, int page)
         {
             _logger.LogInformation("Calculating products per page");
-
             var pageSize = 10;
 
             try
             {
-                var paginatedProducts = products
-                    .Skip((page - 1) * pageSize)
-                    .Take(pageSize)
-                    .ToList();
+                var paginatedResult = _paginationService.Paginate(source, page, pageSize);
+                if (paginatedResult.IsFailure) return Result.Failure<PageItemsDto<T>>(paginatedResult.Error);
 
-                var cartResult = _shoppingCartService.GetCart();
-                var cart = cartResult.Value;
-                var totalPages = (int)Math.Ceiling((double)products.Count / pageSize);
+                var cartItemCount = GetCartItemCount();
 
-                var pageItems = new PageItemsDto
+                var pageItems = new PageItemsDto<T>
                 {
-                    CartItemCount = cart.Count,
-                    CurrentPage = page,
-                    TotalPages = totalPages,
-                    Products = paginatedProducts
+                    CartItemCount = cartItemCount,
+                    CurrentPage = paginatedResult.Value.CurrentPage,
+                    TotalPages = paginatedResult.Value.TotalPages,
+                    Items = paginatedResult.Value.Items
                 };
 
                 return Result.Success(pageItems);
@@ -90,8 +78,20 @@ namespace Degree.Services
             catch (Exception ex)
             {
                 _logger.LogError($"Error while calculating products: {ex.Message}");
-                return Result.Failure<PageItemsDto>(ex.Message);
+                return Result.Failure<PageItemsDto<T>>(ex.Message);
             }
+        }
+
+        private int GetCartItemCount()
+        {
+            var cartResult = _shoppingCartService.GetCart();
+            if (cartResult.IsFailure)
+            {
+                _logger.LogWarning("Failed to retrieve cart data.");
+                return 0;
+            }
+
+            return cartResult.Value.Count;
         }
     }
 }

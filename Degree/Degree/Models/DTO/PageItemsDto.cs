@@ -2,11 +2,11 @@
 
 namespace Degree.Models
 {
-    public record PageItemsDto
+    public record PageItemsDto<T>
     {
         public int CartItemCount { get; set; }
         public int CurrentPage { get; set; }
         public int TotalPages { get; set; }
-        public List<ProductDto> Products { get; set; } = new();
+        public IReadOnlyCollection<T>? Items { get; set; }
     }
 }

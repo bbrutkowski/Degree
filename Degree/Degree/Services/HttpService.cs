@@ -1,6 +1,7 @@
 ﻿using CSharpFunctionalExtensions;
+using Degree.Models.DTO;
 using Degree.Services.Interfaces;
-using System.Net.Http.Headers;
+using System.Text.Json;
 
 namespace Degree.Services
 {
@@ -8,9 +9,8 @@ namespace Degree.Services
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<HttpService> _logger;
-        private HttpClient? _client;
 
-        private const string _sendRequestResultMessage = "Sending request completed with a code:";
+        private const string _clientName = "FakeStoreApiClient";
 
         public HttpService(IHttpClientFactory httpClientFactory, ILogger<HttpService> logger)
         {
@@ -18,46 +18,96 @@ namespace Degree.Services
             _logger = logger;
         }
 
-        private HttpClient CreateClient() => _httpClientFactory.CreateClient();
-
-        public async Task<Result<string>> SendGetRequestAsync(HttpRequestMessage requestMessage, CancellationToken token)
+        public async Task<Result<List<string>>> GetCategoriesAsync(CancellationToken token)
         {
+            _logger.LogInformation("Fetching available product categories");
+            var endpoint = "products/categories";
+
             try
             {
-                _client ??= CreateClient();
+                var client = _httpClientFactory.CreateClient("FakeStoreApiClient");
 
-                _logger.LogInformation("Sending request");
-
-                var response = await _client.SendAsync(requestMessage, token);
-                _logger.LogInformation($"Sending completed with code: {response.StatusCode}");
-
-                if (!response.IsSuccessStatusCode) return Result.Failure<string>($"{_sendRequestResultMessage} {response.StatusCode}");
+                var response = await client.GetAsync(endpoint, token);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError($"Failed to fetch categories: {response.StatusCode}");
+                    return Result.Failure<List<string>>($"Error: {response.StatusCode}");
+                }
 
                 var content = await response.Content.ReadAsStringAsync(token);
+                var categories = JsonSerializer.Deserialize<List<string>>(content, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
 
-                return Result.Success(content);
+                return Result.Success(categories ?? []);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error occurred while sending request: {ex.Message}");
-                return Result.Failure<string>(ex.Message);
+                _logger.LogError($"Error while fetching categories: {ex.Message}");
+                return Result.Failure<List<string>>(ex.Message);
             }
         }
 
-        public Result<HttpRequestMessage> CreateGetRequest(string url)
+        public async Task<Result<IReadOnlyCollection<ProductDto>>> GetProductsAsync(CancellationToken token)
         {
+            _logger.LogInformation("Fetching all products");
+            var endpoint = "products";
+
             try
             {
-                var request = new HttpRequestMessage(HttpMethod.Get, url);
+                var client = _httpClientFactory.CreateClient(_clientName);
 
-                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                var response = await client.GetAsync(endpoint, token);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError($"Failed to fetch products: {response.StatusCode}");
+                    return Result.Failure<IReadOnlyCollection<ProductDto>>($"Error: {response.StatusCode}");
+                }
 
-                return Result.Success(request);
+                var content = await response.Content.ReadAsStringAsync(token);
+                var products = JsonSerializer.Deserialize<IReadOnlyCollection<ProductDto>>(content, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                return Result.Success(products ?? []);
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error while creating request: {ex.Message}");
-                return Result.Failure<HttpRequestMessage>(ex.Message);
+                _logger.LogError($"Error while fetching products: {ex.Message}");
+                return Result.Failure<IReadOnlyCollection<ProductDto>>(ex.Message);
+            }
+        }
+
+        public async Task<Result<IReadOnlyCollection<ProductDto>>> GetProductsByCategoryAsync(string category, CancellationToken token)
+        {
+            _logger.LogInformation("Fetching products by category");
+            var endpoint = $"products/category/{category}";
+
+            try
+            {
+                var client = _httpClientFactory.CreateClient(_clientName);
+
+                var response = await client.GetAsync(endpoint, token);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError($"Failed to fetch products by category: {response.StatusCode}");
+                    return Result.Failure<IReadOnlyCollection<ProductDto>>($"Error: {response.StatusCode}");
+                }
+
+                var content = await response.Content.ReadAsStringAsync(token);
+                var products = JsonSerializer.Deserialize<IReadOnlyCollection<ProductDto>>(content, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                return Result.Success(products ?? []);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error while fetching products by category: {ex.Message}");
+                return Result.Failure<IReadOnlyCollection<ProductDto>>(ex.Message);
             }
         }
     }

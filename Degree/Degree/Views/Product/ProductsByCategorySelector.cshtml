@@ -1,0 +1,45 @@
+﻿@model IEnumerable<string>
+
+<h2>Select Category</h2>
+
+<div class="form-group">
+    <select id="categorySelector">
+        <option value="">-- Select --</option>
+        @foreach (var category in Model)
+        {
+            <option value="@category">@category</option>
+        }
+    </select>
+</div>
+
+<div id="products-container">
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', async function () {
+        const categorySelector = document.getElementById('categorySelector');
+
+        categorySelector.addEventListener('change', async function () {
+            const selectedCategory = this.value;
+            if (!selectedCategory) {
+                document.getElementById('products-container').innerHTML = '';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/Product/ProductsByCategory?category=${encodeURIComponent(selectedCategory)}`);
+                if (response.ok) {
+                    const productsHtml = await response.text();
+                    document.getElementById('products-container').innerHTML = productsHtml;
+                } else {
+                    const errorText = await response.text();  
+                    console.error('Failed to fetch products. Status:', response.status, errorText);
+                    document.getElementById('products-container').innerHTML = `<p>Error loading products: ${response.status}</p>`;
+                }
+            } catch (error) {
+                console.error('Error while fetching products:', error);
+                document.getElementById('products-container').innerHTML = '<p>Error loading products.</p>';
+            }
+        });
+    });
+</script>
